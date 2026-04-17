@@ -619,7 +619,11 @@
 
 </div><!-- /container -->
 
-<script>
+<script type="module">
+  import UPNG from 'https://esm.sh/upng-js@2.1.0';
+  import jpeg from 'https://esm.sh/jpeg-js@0.4.4';
+  import { GIFEncoder, quantize, applyPalette } from 'https://esm.sh/gifenc@1.0.3';
+
   // ── Constants ─────────────────────────────────────────────
   const MAX_FILES = 60;
 
@@ -773,6 +777,116 @@
 
   function hideToast() { toastEl.classList.remove('show'); }
 
+  // ── Local encoding (browser-side fallback) ────────────────
+  const _PNG_SIG  = 8;
+  const _PNG_OVR  = 12;
+  const _ACT_TYPE = 'acTL';
+
+  const _CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i += 1) {
+      let c = i;
+      for (let j = 0; j < 8; j += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function _crc32(data) {
+    let crc = 0xffffffff;
+    for (let i = 0; i < data.length; i += 1) crc = _CRC_TABLE[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  async function _decodeImage(file) {
+    const name = file.name.toLowerCase();
+    const mime = (file.type || '').toLowerCase();
+    const buffer = await file.arrayBuffer();
+    if (mime === 'image/png' || name.endsWith('.png')) {
+      const png = UPNG.decode(buffer);
+      const frames = UPNG.toRGBA8(png);
+      if (!frames.length) throw new Error(`无效的 PNG 文件：${file.name}`);
+      return { width: png.width, height: png.height, rgba: new Uint8Array(frames[0]) };
+    }
+    if (mime === 'image/jpeg' || mime === 'image/jpg' || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+      const jpg = jpeg.decode(new Uint8Array(buffer), { useTArray: true });
+      return { width: jpg.width, height: jpg.height, rgba: jpg.data };
+    }
+    throw new Error(`不支持的图片格式：${file.name}`);
+  }
+
+  function _resizeNearest(src, srcW, srcH, dstW, dstH) {
+    const dst = new Uint8Array(dstW * dstH * 4);
+    for (let y = 0; y < dstH; y += 1) {
+      const srcY = Math.min(srcH - 1, Math.floor((y * srcH) / dstH));
+      for (let x = 0; x < dstW; x += 1) {
+        const srcX = Math.min(srcW - 1, Math.floor((x * srcW) / dstW));
+        const s = (srcY * srcW + srcX) * 4;
+        const d = (y * dstW + x) * 4;
+        dst[d] = src[s]; dst[d+1] = src[s+1]; dst[d+2] = src[s+2]; dst[d+3] = src[s+3];
+      }
+    }
+    return dst;
+  }
+
+  function _encodeGif(frames, width, height, delay, loop) {
+    const gif = GIFEncoder();
+    const repeat = loop === 1 ? -1 : loop;
+    for (let i = 0; i < frames.length; i += 1) {
+      const palette = quantize(frames[i], 256);
+      const indexed = applyPalette(frames[i], palette);
+      gif.writeFrame(indexed, width, height, { palette, delay, repeat: i === 0 ? repeat : undefined });
+    }
+    gif.finish();
+    return gif.bytes();
+  }
+
+  function _setApngLoop(pngBuffer, loop) {
+    const bytes = new Uint8Array(pngBuffer.slice(0));
+    const view = new DataView(bytes.buffer);
+    let offset = _PNG_SIG;
+    while (offset + _PNG_OVR <= bytes.length) {
+      const length = view.getUint32(offset, false);
+      const typeOffset = offset + 4;
+      const chunkEnd = offset + length + _PNG_OVR;
+      if (chunkEnd > bytes.length) break;
+      const type = String.fromCharCode(bytes[typeOffset], bytes[typeOffset+1], bytes[typeOffset+2], bytes[typeOffset+3]);
+      if (type === _ACT_TYPE && length === 8) {
+        view.setUint32(typeOffset + 8, loop, false);
+        const crc = _crc32(bytes.subarray(typeOffset, typeOffset + 4 + length));
+        view.setUint32(typeOffset + 4 + length, crc, false);
+        return bytes.buffer;
+      }
+      offset = chunkEnd;
+    }
+    return bytes.buffer;
+  }
+
+  function _encodeApng(frames, width, height, delay, loop) {
+    const bufs = frames.map((f) => f.buffer.slice(f.byteOffset, f.byteOffset + f.byteLength));
+    const delays = new Array(bufs.length).fill(delay);
+    const encoded = UPNG.encode(bufs, width, height, 0, delays);
+    if (bufs.length > 1) return new Uint8Array(_setApngLoop(encoded, loop));
+    return new Uint8Array(encoded);
+  }
+
+  async function _encodeLocal(fileList, format, fps, loop, widthVal, heightVal) {
+    const decoded = [];
+    for (const file of fileList) decoded.push(await _decodeImage(file));
+    const tw = widthVal  ? parseInt(widthVal,  10) : decoded[0].width;
+    const th = heightVal ? parseInt(heightVal, 10) : decoded[0].height;
+    if (!Number.isInteger(tw) || tw < 1 || tw > 4096) throw new Error('宽度必须为 1~4096 的整数');
+    if (!Number.isInteger(th) || th < 1 || th > 4096) throw new Error('高度必须为 1~4096 的整数');
+    const frames = decoded.map((f) =>
+      f.width === tw && f.height === th ? f.rgba : _resizeNearest(f.rgba, f.width, f.height, tw, th)
+    );
+    const delay = Math.max(1, Math.round(1000 / fps));
+    const bytes = format === 'gif'
+      ? _encodeGif(frames, tw, th, delay, loop)
+      : _encodeApng(frames, tw, th, delay, loop);
+    return new Blob([bytes], { type: format === 'gif' ? 'image/gif' : 'image/apng' });
+  }
+
   // ── Form submit ───────────────────────────────────────────
   const btnInner    = document.getElementById('btn-inner');
   const resultCard  = document.getElementById('result-card');
@@ -804,18 +918,35 @@
     if (heightVal) payload.append('height', heightVal);
 
     const t0 = Date.now();
+    let blob = null;
+    let isLocal = false;
+
     try {
-      const res = await fetch('/api/encode', { method: 'POST', body: payload });
-      if (!res.ok) {
-        let errMsg = '请求失败';
-        try {
-          const json = await res.json();
-          errMsg = json.error || errMsg;
-        } catch { errMsg = (await res.text()) || errMsg; }
-        throw new Error(errMsg);
+      // 先尝试服务器端编码
+      try {
+        const res = await fetch('/api/encode', { method: 'POST', body: payload });
+        if (!res.ok) {
+          let errMsg = `服务器错误 ${res.status}`;
+          const ct = res.headers.get('content-type') || '';
+          try {
+            errMsg = ct.includes('json')
+              ? ((await res.json()).error || errMsg)
+              : ((await res.text()) || errMsg);
+          } catch {}
+          throw new Error(errMsg);
+        }
+        blob = await res.blob();
+      } catch (serverErr) {
+        // 服务器失败，降级为本地编码
+        console.warn('服务器编码失败，降级至本地：', serverErr);
+        btnInner.innerHTML = '<span class="spinner"></span> 服务器不可用，正在本地编码…';
+        showToast('服务器不可用，已切换至本地编码，请稍候…', 'warn');
+        const fps  = parseInt(fpsRange.value, 10);
+        const loop = parseInt(document.getElementById('loop').value, 10) || 0;
+        blob = await _encodeLocal(files, format, fps, loop, widthVal || null, heightVal || null);
+        isLocal = true;
       }
 
-      const blob = await res.blob();
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
       const filename = `output-${Date.now()}.${format}`;
       const objectUrl = URL.createObjectURL(blob);
@@ -826,13 +957,9 @@
       btnDownload.textContent = `⬇️ 下载 ${filename}`;
 
       resultMeta.innerHTML = '';
-      for (const text of [
-        format.toUpperCase(),
-        `${fpsRange.value} FPS`,
-        `${files.length} 帧`,
-        fmtBytes(blob.size),
-        `耗时 ${elapsed}s`,
-      ]) {
+      const tags = [format.toUpperCase(), `${fpsRange.value} FPS`, `${files.length} 帧`, fmtBytes(blob.size), `耗时 ${elapsed}s`];
+      if (isLocal) tags.push('本地编码');
+      for (const text of tags) {
         const tag = document.createElement('span');
         tag.className = 'meta-tag';
         tag.textContent = text;
@@ -841,7 +968,8 @@
 
       resultCard.classList.add('show');
       resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      showToast(`生成成功：${filename}（${fmtBytes(blob.size)}，耗时 ${elapsed}s）`, 'success');
+      const modeNote = isLocal ? '（本地编码）' : '';
+      showToast(`生成成功：${filename}（${fmtBytes(blob.size)}，耗时 ${elapsed}s）${modeNote}`, 'success');
     } catch (err) {
       showToast(`生成失败：${err.message || err}`, 'error');
     } finally {
