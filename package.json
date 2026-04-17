@@ -1,0 +1,26 @@
+{
+  "name": "makegif",
+  "version": "1.0.0",
+  "description": "Cloudflare Workers 在线 GIF/APNG 生成工具",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "gif",
+    "apng"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "gifenc": "^1.0.3",
+    "jpeg-js": "^0.4.4",
+    "upng-js": "^2.1.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.83.0"
+  }
+}
