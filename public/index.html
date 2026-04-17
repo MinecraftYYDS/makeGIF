@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>在线 GIF/APNG 生成</title>
+  <style>
+    body { font-family: sans-serif; max-width: 780px; margin: 24px auto; padding: 0 12px; }
+    form { display: grid; gap: 10px; }
+    .row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    label { display: grid; gap: 4px; font-size: 14px; }
+    input, select, button { padding: 8px; font-size: 14px; }
+    button { cursor: pointer; }
+    #status { white-space: pre-wrap; min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <h1>在线 GIF/APNG 生成</h1>
+  <form id="encode-form">
+    <label>
+      上传图片（PNG/JPG，可多选）
+      <input id="images" name="images" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple required />
+    </label>
+
+    <div class="row">
+      <label>FPS
+        <input name="fps" type="number" min="1" max="60" value="10" required />
+      </label>
+      <label>宽度（可选）
+        <input name="width" type="number" min="1" placeholder="默认首帧宽" />
+      </label>
+      <label>高度（可选）
+        <input name="height" type="number" min="1" placeholder="默认首帧高" />
+      </label>
+      <label>循环次数 loop
+        <input name="loop" type="number" min="0" value="0" />
+      </label>
+    </div>
+
+    <label>输出格式
+      <select name="format">
+        <option value="gif">gif</option>
+        <option value="apng">apng</option>
+      </select>
+    </label>
+
+    <button type="submit">开始生成</button>
+  </form>
+
+  <p id="status"></p>
+
+  <script>
+    const form = document.getElementById('encode-form');
+    const statusEl = document.getElementById('status');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      statusEl.textContent = '编码中，请稍候...';
+
+      const imagesInput = document.getElementById('images');
+      if (!imagesInput.files || !imagesInput.files.length) {
+        statusEl.textContent = '请先选择图片';
+        return;
+      }
+
+      const payload = new FormData();
+      for (const file of imagesInput.files) {
+        payload.append('images', file, file.name);
+      }
+
+      const fields = ['fps', 'width', 'height', 'loop', 'format'];
+      for (const key of fields) {
+        const value = form.elements[key].value;
+        if (value !== '') {
+          payload.append(key, value);
+        }
+      }
+
+      try {
+        const response = await fetch('/api/encode', {
+          method: 'POST',
+          body: payload,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || '请求失败');
+        }
+
+        const blob = await response.blob();
+        const format = form.elements.format.value;
+        const filename = `output-${Date.now()}.${format}`;
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+
+        statusEl.textContent = `生成成功：${filename}`;
+      } catch (error) {
+        statusEl.textContent = `生成失败：${error.message || error}`;
+      }
+    });
+  </script>
+</body>
+</html>
