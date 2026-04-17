@@ -732,7 +732,7 @@
     const delay = Math.round(1000 / fps);
     const fmt = getFormat();
     if (fmt === 'gif' && fps > 30) {
-      fpsHint.textContent = `每帧间隔 ${delay}ms · ⚠️ GIF 高帧率在部分浏览器可能无法正常播放，建议改用 APNG`;
+      fpsHint.textContent = `每帧间隔 ${delay}ms · ⚠️ 浏览器通常限制 GIF 最小帧间隔为 20ms（≈50fps），高帧率可能无法正常播放，建议改用 APNG`;
       fpsHint.className = 'field-hint warn';
     } else {
       fpsHint.textContent = `每帧间隔 ${delay}ms`;
