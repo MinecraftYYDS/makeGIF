@@ -459,7 +459,7 @@
     <span class="badge"><span class="badge-dot"></span>Cloudflare Workers</span>
     <span class="badge">GIF · APNG</span>
     <span class="badge">拖拽上传</span>
-    <span class="badge">最高 120 FPS</span>
+    <span class="badge">GIF 60 · APNG 120 FPS</span>
   </div>
 </header>
 
@@ -620,6 +620,9 @@
 </div><!-- /container -->
 
 <script>
+  // ── Constants ─────────────────────────────────────────────
+  const MAX_FILES = 60;
+
   // ── File management ───────────────────────────────────────
   let files = [];
 
@@ -652,9 +655,9 @@
     const valid = incoming.filter(
       (f) => /^image\/(png|jpe?g)$/.test(f.type) || /\.(png|jpe?g)$/i.test(f.name)
     );
-    const room = 60 - files.length;
+    const room = MAX_FILES - files.length;
     if (valid.length > room) {
-      showToast(`最多 60 张，已跳过 ${valid.length - room} 张`, 'warn');
+      showToast(`最多 ${MAX_FILES} 张，已跳过 ${valid.length - room} 张`, 'warn');
       files = [...files, ...valid.slice(0, room)];
     } else {
       files = [...files, ...valid];
@@ -684,8 +687,10 @@
       thumb.className = 'file-thumb';
       thumb.alt = file.name;
       const objUrl = URL.createObjectURL(file);
-      thumb.src = objUrl;
+      // createObjectURL always produces a blob: URL; validate before assigning to src
+      thumb.src = objUrl.startsWith('blob:') ? objUrl : '';
       thumb.onload = () => URL.revokeObjectURL(objUrl);
+      thumb.onerror = () => URL.revokeObjectURL(objUrl);
 
       const info = document.createElement('div');
       info.className = 'file-info';
@@ -727,7 +732,7 @@
     const delay = Math.round(1000 / fps);
     const fmt = getFormat();
     if (fmt === 'gif' && fps > 30) {
-      fpsHint.textContent = `每帧间隔 ${delay}ms · ⚠️ GIF 高帧率在部分浏览器可能受限，建议改用 APNG`;
+      fpsHint.textContent = `每帧间隔 ${delay}ms · ⚠️ GIF 高帧率在部分浏览器可能无法正常播放，建议改用 APNG`;
       fpsHint.className = 'field-hint warn';
     } else {
       fpsHint.textContent = `每帧间隔 ${delay}ms`;
@@ -820,13 +825,19 @@
       btnDownload.download = filename;
       btnDownload.textContent = `⬇️ 下载 ${filename}`;
 
-      resultMeta.innerHTML = [
-        `<span class="meta-tag">${format.toUpperCase()}</span>`,
-        `<span class="meta-tag">${fpsRange.value} FPS</span>`,
-        `<span class="meta-tag">${files.length} 帧</span>`,
-        `<span class="meta-tag">${fmtBytes(blob.size)}</span>`,
-        `<span class="meta-tag">耗时 ${elapsed}s</span>`,
-      ].join('');
+      resultMeta.innerHTML = '';
+      for (const text of [
+        format.toUpperCase(),
+        `${fpsRange.value} FPS`,
+        `${files.length} 帧`,
+        fmtBytes(blob.size),
+        `耗时 ${elapsed}s`,
+      ]) {
+        const tag = document.createElement('span');
+        tag.className = 'meta-tag';
+        tag.textContent = text;
+        resultMeta.appendChild(tag);
+      }
 
       resultCard.classList.add('show');
       resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
