@@ -622,7 +622,8 @@
 <script type="module">
   import UPNG from 'https://esm.sh/upng-js@2.1.0';
   import jpeg from 'https://esm.sh/jpeg-js@0.4.4';
-  import { GIFEncoder, quantize, applyPalette } from 'https://esm.sh/gifenc@1.0.3';
+  import gifenc from 'https://esm.sh/gifenc@1.0.3';
+  const { GIFEncoder, quantize, applyPalette } = gifenc;
 
   // ── Constants ─────────────────────────────────────────────
   const MAX_FILES = 60;
