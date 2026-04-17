@@ -1,4 +1,4 @@
-name = "makegif-worker"
+name = "makegif"
 main = "src/worker.js"
 compatibility_date = "2026-04-17"
 
