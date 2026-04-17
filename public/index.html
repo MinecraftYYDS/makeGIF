@@ -3,106 +3,851 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>在线 GIF/APNG 生成</title>
+  <title>GIF · APNG 生成器</title>
   <style>
-    body { font-family: sans-serif; max-width: 780px; margin: 24px auto; padding: 0 12px; }
-    form { display: grid; gap: 10px; }
-    .row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-    label { display: grid; gap: 4px; font-size: 14px; }
-    input, select, button { padding: 8px; font-size: 14px; }
-    button { cursor: pointer; }
-    #status { white-space: pre-wrap; min-height: 1.5em; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f18;
+      --surface: #161928;
+      --surface2: #1e2238;
+      --border: #2a2f4a;
+      --accent: #7c6fe0;
+      --accent-hover: #9a8fec;
+      --accent-glow: rgba(124, 111, 224, 0.25);
+      --success: #22c55e;
+      --success-bg: rgba(34, 197, 94, 0.12);
+      --error: #f43f5e;
+      --error-bg: rgba(244, 63, 94, 0.12);
+      --warn: #fb923c;
+      --warn-bg: rgba(251, 146, 60, 0.12);
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --text-faint: #475569;
+      --radius-sm: 8px;
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: 80px;
+      line-height: 1.5;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .site-header {
+      text-align: center;
+      padding: 48px 16px 36px;
+      background: linear-gradient(180deg, rgba(124, 111, 224, 0.1) 0%, transparent 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .site-header h1 {
+      font-size: clamp(1.7rem, 4vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #fff 0%, var(--accent-hover) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .site-header p {
+      margin-top: 8px;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    .badge-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 11px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    /* ── Container ───────────────────────────────────────── */
+    .container {
+      max-width: 860px;
+      margin: 36px auto;
+      padding: 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Card ────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+    }
+    .card-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-faint);
+      margin-bottom: 16px;
+    }
+
+    /* ── Drop Zone ───────────────────────────────────────── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      background: var(--surface2);
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+    }
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(124, 111, 224, 0.06);
+      box-shadow: 0 0 0 4px var(--accent-glow);
+    }
+    .drop-zone.drag-over::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(124,111,224,0.08) 50%, transparent 100%);
+      animation: shimmer 1.2s ease infinite;
+    }
+    @keyframes shimmer {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    .drop-icon { font-size: 2.4rem; display: block; margin-bottom: 10px; }
+    .drop-zone h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 5px; }
+    .drop-zone p  { font-size: 0.82rem; color: var(--text-muted); }
+    .drop-zone strong { color: var(--accent); }
+
+    /* ── File List ───────────────────────────────────────── */
+    .file-list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 14px 0 6px;
+    }
+    .file-count { font-size: 0.8rem; color: var(--text-muted); }
+    .btn-clear {
+      background: none;
+      border: none;
+      color: var(--text-faint);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-clear:hover { color: var(--error); background: var(--error-bg); }
+    .file-list { display: flex; flex-direction: column; gap: 7px; }
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 7px 10px;
+      animation: slide-in 0.18s ease;
+    }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(-5px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .file-thumb {
+      width: 38px;
+      height: 38px;
+      border-radius: 5px;
+      object-fit: cover;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name { font-size: 0.83rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+    .file-remove {
+      background: none;
+      border: none;
+      color: var(--text-faint);
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .file-remove:hover { color: var(--error); background: var(--error-bg); }
+
+    /* ── Settings ────────────────────────────────────────── */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 16px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field > label {
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .field input,
+    .field select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 0.88rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      width: 100%;
+    }
+    .field input:focus,
+    .field select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .field input::placeholder { color: var(--text-faint); }
+    .field select option { background: var(--surface2); }
+    .field-hint { font-size: 0.72rem; color: var(--text-faint); line-height: 1.4; }
+    .field-hint.warn { color: var(--warn); }
+
+    /* ── Format cards ────────────────────────────────────── */
+    .format-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .format-card { position: relative; cursor: pointer; }
+    .format-card input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
+    .format-label {
+      display: block;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      background: var(--surface2);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+      text-align: center;
+    }
+    .format-card input:checked + .format-label {
+      border-color: var(--accent);
+      background: rgba(124, 111, 224, 0.08);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .format-label strong { display: block; font-size: 0.88rem; }
+    .format-label span { font-size: 0.71rem; color: var(--text-muted); }
+
+    /* ── FPS slider ──────────────────────────────────────── */
+    .fps-row { display: flex; align-items: center; gap: 10px; }
+    .fps-row input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .fps-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .fps-row input[type="range"]::-webkit-slider-thumb:hover { background: var(--accent-hover); }
+    .fps-row input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      cursor: pointer;
+    }
+    .fps-display { min-width: 40px; text-align: right; font-size: 0.9rem; font-weight: 600; color: var(--accent-hover); }
+
+    /* ── Submit button ───────────────────────────────────── */
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--accent) 0%, #9b5de5 100%);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.2s, box-shadow 0.2s, transform 0.15s, opacity 0.2s;
+      letter-spacing: 0.01em;
+    }
+    .btn-submit:hover:not(:disabled) {
+      filter: brightness(1.12);
+      box-shadow: 0 8px 24px rgba(124, 111, 224, 0.4);
+      transform: translateY(-1px);
+    }
+    .btn-submit:active:not(:disabled) { transform: translateY(0); }
+    .btn-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-inner { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .spinner {
+      display: inline-block;
+      width: 15px;
+      height: 15px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ───────────────────────────────────────────── */
+    .toast {
+      border-radius: var(--radius-sm);
+      padding: 11px 14px;
+      font-size: 0.86rem;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .toast.show { display: flex; animation: fade-up 0.22s ease; }
+    .toast.success { background: var(--success-bg); color: var(--success); border: 1px solid rgba(34,197,94,0.25); }
+    .toast.error   { background: var(--error-bg);   color: var(--error);   border: 1px solid rgba(244,63,94,0.25); }
+    .toast.warn    { background: var(--warn-bg);    color: var(--warn);    border: 1px solid rgba(251,146,60,0.25); }
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(5px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Result card ─────────────────────────────────────── */
+    .result-card { display: none; }
+    .result-card.show { display: block; animation: fade-up 0.35s ease; }
+    .result-preview {
+      display: flex;
+      justify-content: center;
+      background: var(--surface2);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      min-height: 100px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .result-preview img { max-width: 100%; max-height: 420px; border-radius: 6px; }
+    .btn-download {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 12px;
+      background: var(--success-bg);
+      border: 1.5px solid rgba(34, 197, 94, 0.3);
+      border-radius: var(--radius-sm);
+      color: var(--success);
+      font-size: 0.93rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+      text-decoration: none;
+    }
+    .btn-download:hover {
+      background: rgba(34, 197, 94, 0.2);
+      box-shadow: 0 4px 14px rgba(34, 197, 94, 0.2);
+      transform: translateY(-1px);
+    }
+    .result-meta { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .meta-tag {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px 10px;
+    }
+
+    /* ── API Docs ────────────────────────────────────────── */
+    .api-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .api-toggle {
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .api-toggle:hover { background: var(--surface2); }
+    .api-chevron { transition: transform 0.22s; font-style: normal; color: var(--text-faint); font-size: 0.72rem; }
+    .api-toggle[aria-expanded="true"] .api-chevron { transform: rotate(180deg); }
+    .api-body { padding: 0 24px 24px; display: none; }
+    .api-body.open { display: block; }
+    .api-body p { font-size: 0.83rem; color: var(--text-muted); margin-bottom: 10px; }
+    .api-body h3 { font-size: 0.78rem; font-weight: 600; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.06em; margin: 18px 0 8px; }
+    .endpoint-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .method { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; font-family: monospace; }
+    .method-post { background: rgba(124,111,224,0.2); color: var(--accent-hover); }
+    .method-get  { background: rgba(34,197,94,0.15); color: var(--success); }
+    .endpoint-path { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.84rem; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+    .code-block {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 0.78rem;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      color: #a8b4c4;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.7;
+    }
+    .ck { color: #c792ea; }
+    .cs { color: #c3e88d; }
+    .cn { color: #f78c6c; }
+    .cc { color: #546e7a; font-style: italic; }
+
+    /* ── Responsive ──────────────────────────────────────── */
+    @media (max-width: 560px) {
+      .card { padding: 16px; }
+      .settings-grid { grid-template-columns: 1fr 1fr; }
+      .site-header { padding: 32px 16px 28px; }
+    }
   </style>
 </head>
 <body>
-  <h1>在线 GIF/APNG 生成</h1>
-  <form id="encode-form">
-    <label>
-      上传图片（PNG/JPG，可多选）
-      <input id="images" name="images" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple required />
-    </label>
 
-    <div class="row">
-      <label>FPS
-        <input name="fps" type="number" min="1" max="60" value="10" required />
-      </label>
-      <label>宽度（可选）
-        <input name="width" type="number" min="1" placeholder="默认首帧宽" />
-      </label>
-      <label>高度（可选）
-        <input name="height" type="number" min="1" placeholder="默认首帧高" />
-      </label>
-      <label>循环次数 loop
-        <input name="loop" type="number" min="0" value="0" />
-      </label>
+<header class="site-header">
+  <h1>🎞️ GIF · APNG 生成器</h1>
+  <p>上传多帧图片，一键合成动图并下载</p>
+  <div class="badge-row">
+    <span class="badge"><span class="badge-dot"></span>Cloudflare Workers</span>
+    <span class="badge">GIF · APNG</span>
+    <span class="badge">拖拽上传</span>
+    <span class="badge">最高 120 FPS</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Upload card -->
+  <div class="card">
+    <div class="card-title">📁 上传帧图片</div>
+    <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="点击或拖拽图片到此区域上传">
+      <span class="drop-icon">🖼️</span>
+      <h3>点击选择 或 拖拽图片到此处</h3>
+      <p>支持 <strong>PNG / JPG</strong>，最多 <strong>60</strong> 帧，单张建议不超过 10 MB</p>
     </div>
+    <input type="file" id="file-input" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple hidden />
+    <div id="file-list-wrap" style="display:none">
+      <div class="file-list-header">
+        <span class="file-count" id="file-count"></span>
+        <button class="btn-clear" id="btn-clear" type="button">✕ 清空</button>
+      </div>
+      <div class="file-list" id="file-list"></div>
+    </div>
+  </div>
 
-    <label>输出格式
-      <select name="format">
-        <option value="gif">gif</option>
-        <option value="apng">apng</option>
-      </select>
-    </label>
+  <!-- Settings card -->
+  <div class="card">
+    <div class="card-title">⚙️ 编码参数</div>
+    <div class="settings-grid">
 
-    <button type="submit">开始生成</button>
-  </form>
+      <!-- Format -->
+      <div class="field" style="grid-column: span 2">
+        <label>输出格式</label>
+        <div class="format-cards">
+          <label class="format-card">
+            <input type="radio" name="format" value="gif" checked />
+            <span class="format-label">
+              <strong>GIF</strong>
+              <span>256色 · 最高 60 FPS</span>
+            </span>
+          </label>
+          <label class="format-card">
+            <input type="radio" name="format" value="apng" />
+            <span class="format-label">
+              <strong>APNG</strong>
+              <span>全彩透明 · 最高 120 FPS</span>
+            </span>
+          </label>
+        </div>
+      </div>
 
-  <p id="status"></p>
+      <!-- FPS -->
+      <div class="field" style="grid-column: span 2">
+        <label for="fps-range">帧率 FPS</label>
+        <div class="fps-row">
+          <input type="range" id="fps-range" min="1" max="60" value="10" step="1" />
+          <span class="fps-display" id="fps-display">10</span>
+        </div>
+        <p class="field-hint" id="fps-hint">每帧间隔 100ms</p>
+      </div>
 
-  <script>
-    const form = document.getElementById('encode-form');
-    const statusEl = document.getElementById('status');
+      <!-- Loop -->
+      <div class="field">
+        <label for="loop">循环次数</label>
+        <input id="loop" type="number" min="0" max="65535" value="0" />
+        <p class="field-hint">0 = 无限循环</p>
+      </div>
 
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      statusEl.textContent = '编码中，请稍候...';
+      <!-- Width -->
+      <div class="field">
+        <label for="width">宽度（可选）</label>
+        <input id="width" type="number" min="1" max="4096" placeholder="默认首帧宽" />
+      </div>
 
-      const imagesInput = document.getElementById('images');
-      if (!imagesInput.files || !imagesInput.files.length) {
-        statusEl.textContent = '请先选择图片';
-        return;
-      }
+      <!-- Height -->
+      <div class="field">
+        <label for="height">高度（可选）</label>
+        <input id="height" type="number" min="1" max="4096" placeholder="默认首帧高" />
+      </div>
 
-      const payload = new FormData();
-      for (const file of imagesInput.files) {
-        payload.append('images', file, file.name);
-      }
+    </div>
+  </div>
 
-      const fields = ['fps', 'width', 'height', 'loop', 'format'];
-      for (const key of fields) {
-        const value = form.elements[key].value;
-        if (value !== '') {
-          payload.append(key, value);
-        }
-      }
+  <!-- Toast -->
+  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
 
-      try {
-        const response = await fetch('/api/encode', {
-          method: 'POST',
-          body: payload,
-        });
+  <!-- Submit -->
+  <button class="btn-submit" id="btn-submit" type="button" disabled>
+    <span class="btn-inner" id="btn-inner">⚡ 开始生成</span>
+  </button>
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || '请求失败');
-        }
+  <!-- Result card -->
+  <div class="card result-card" id="result-card">
+    <div class="card-title">✅ 生成结果</div>
+    <div class="result-preview">
+      <img id="result-img" src="" alt="生成结果预览" />
+    </div>
+    <a class="btn-download" id="btn-download" href="#" download>⬇️ 下载文件</a>
+    <div class="result-meta" id="result-meta"></div>
+  </div>
 
-        const blob = await response.blob();
-        const format = form.elements.format.value;
-        const filename = `output-${Date.now()}.${format}`;
+  <!-- API Docs -->
+  <div class="api-section">
+    <button class="api-toggle" id="api-toggle" type="button" aria-expanded="false" aria-controls="api-body">
+      <span>📖 API 文档</span>
+      <i class="api-chevron">▼</i>
+    </button>
+    <div class="api-body" id="api-body" role="region">
 
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.click();
-        URL.revokeObjectURL(url);
+      <div class="endpoint-row">
+        <span class="method method-post">POST</span>
+        <code class="endpoint-path">/api/encode</code>
+      </div>
+      <p>以 <code>multipart/form-data</code> 格式上传图片及参数，返回二进制动图文件。</p>
 
-        statusEl.textContent = `生成成功：${filename}`;
-      } catch (error) {
-        statusEl.textContent = `生成失败：${error.message || error}`;
-      }
+      <h3>表单字段</h3>
+      <div class="code-block"><span class="ck">images</span>    <span class="cc"># File[]  — PNG/JPG，必填，最多 60 张</span>
+<span class="ck">format</span>    <span class="cc"># string  — "gif" | "apng"，默认 "gif"</span>
+<span class="ck">fps</span>       <span class="cc"># int     — GIF 1~60 / APNG 1~120，默认 10</span>
+<span class="ck">loop</span>      <span class="cc"># int     — 循环次数，0=无限，默认 0</span>
+<span class="ck">width</span>     <span class="cc"># int     — 输出宽度 1~4096，需与 height 同时指定</span>
+<span class="ck">height</span>    <span class="cc"># int     — 输出高度 1~4096，需与 width 同时指定</span></div>
+
+      <h3>cURL 示例</h3>
+      <div class="code-block">curl -X POST https://your-worker.workers.dev/api/encode \
+  -F <span class="cs">"images=@frame1.png"</span> \
+  -F <span class="cs">"images=@frame2.png"</span> \
+  -F <span class="cs">"fps=24"</span> \
+  -F <span class="cs">"format=apng"</span> \
+  -o output.png</div>
+
+      <hr class="divider" />
+
+      <div class="endpoint-row">
+        <span class="method method-get">GET</span>
+        <code class="endpoint-path">/api/info</code>
+      </div>
+      <p>查询支持的格式、帧率范围等能力信息。</p>
+      <div class="code-block">{
+  <span class="cs">"formats"</span>: [<span class="cs">"gif"</span>, <span class="cs">"apng"</span>],
+  <span class="cs">"fps"</span>: {
+    <span class="cs">"gif"</span>:  { <span class="cs">"min"</span>: <span class="cn">1</span>, <span class="cs">"max"</span>: <span class="cn">60</span>  },
+    <span class="cs">"apng"</span>: { <span class="cs">"min"</span>: <span class="cn">1</span>, <span class="cs">"max"</span>: <span class="cn">120</span> }
+  },
+  <span class="cs">"maxImages"</span>: <span class="cn">60</span>,
+  <span class="cs">"maxDimension"</span>: <span class="cn">4096</span>
+}</div>
+
+      <hr class="divider" />
+
+      <div class="endpoint-row">
+        <span class="method method-get">GET</span>
+        <code class="endpoint-path">/api/health</code>
+      </div>
+      <p>健康检查。返回 <code>{"ok":true}</code>。</p>
+
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+  // ── File management ───────────────────────────────────────
+  let files = [];
+
+  const dropZone     = document.getElementById('drop-zone');
+  const fileInput    = document.getElementById('file-input');
+  const fileListEl   = document.getElementById('file-list');
+  const fileListWrap = document.getElementById('file-list-wrap');
+  const fileCountEl  = document.getElementById('file-count');
+  const btnClear     = document.getElementById('btn-clear');
+  const btnSubmit    = document.getElementById('btn-submit');
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+  });
+  dropZone.addEventListener('dragenter', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragover',  (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', (e) => {
+    if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('drag-over');
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    addFiles(Array.from(e.dataTransfer.files));
+  });
+  fileInput.addEventListener('change', () => { addFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+  btnClear.addEventListener('click', () => { files = []; renderFileList(); });
+
+  function addFiles(incoming) {
+    const valid = incoming.filter(
+      (f) => /^image\/(png|jpe?g)$/.test(f.type) || /\.(png|jpe?g)$/i.test(f.name)
+    );
+    const room = 60 - files.length;
+    if (valid.length > room) {
+      showToast(`最多 60 张，已跳过 ${valid.length - room} 张`, 'warn');
+      files = [...files, ...valid.slice(0, room)];
+    } else {
+      files = [...files, ...valid];
+    }
+    renderFileList();
+  }
+
+  function removeFile(idx) { files.splice(idx, 1); renderFileList(); }
+
+  function fmtBytes(b) {
+    if (b < 1024)          return b + ' B';
+    if (b < 1024 * 1024)   return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function renderFileList() {
+    fileListEl.innerHTML = '';
+    fileListWrap.style.display = files.length ? '' : 'none';
+    fileCountEl.textContent = `${files.length} 张图片`;
+    btnSubmit.disabled = files.length === 0;
+
+    files.forEach((file, idx) => {
+      const item = document.createElement('div');
+      item.className = 'file-item';
+
+      const thumb = document.createElement('img');
+      thumb.className = 'file-thumb';
+      thumb.alt = file.name;
+      const objUrl = URL.createObjectURL(file);
+      thumb.src = objUrl;
+      thumb.onload = () => URL.revokeObjectURL(objUrl);
+
+      const info = document.createElement('div');
+      info.className = 'file-info';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'file-name';
+      nameEl.textContent = file.name;
+      const metaEl = document.createElement('div');
+      metaEl.className = 'file-meta';
+      metaEl.textContent = fmtBytes(file.size);
+      info.appendChild(nameEl);
+      info.appendChild(metaEl);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'file-remove';
+      removeBtn.title = '移除';
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', () => removeFile(idx));
+
+      item.appendChild(thumb);
+      item.appendChild(info);
+      item.appendChild(removeBtn);
+      fileListEl.appendChild(item);
     });
-  </script>
+  }
+
+  // ── FPS & format settings ─────────────────────────────────
+  const fpsRange   = document.getElementById('fps-range');
+  const fpsDisplay = document.getElementById('fps-display');
+  const fpsHint    = document.getElementById('fps-hint');
+
+  function getFormat() {
+    return document.querySelector('input[name="format"]:checked').value;
+  }
+
+  function updateFpsUi() {
+    const fps = parseInt(fpsRange.value, 10);
+    fpsDisplay.textContent = fps;
+    const delay = Math.round(1000 / fps);
+    const fmt = getFormat();
+    if (fmt === 'gif' && fps > 30) {
+      fpsHint.textContent = `每帧间隔 ${delay}ms · ⚠️ GIF 高帧率在部分浏览器可能受限，建议改用 APNG`;
+      fpsHint.className = 'field-hint warn';
+    } else {
+      fpsHint.textContent = `每帧间隔 ${delay}ms`;
+      fpsHint.className = 'field-hint';
+    }
+  }
+
+  function updateFpsMax() {
+    const max = getFormat() === 'apng' ? 120 : 60;
+    fpsRange.max = max;
+    if (parseInt(fpsRange.value, 10) > max) fpsRange.value = max;
+    updateFpsUi();
+  }
+
+  fpsRange.addEventListener('input', updateFpsUi);
+  document.querySelectorAll('input[name="format"]').forEach((r) =>
+    r.addEventListener('change', updateFpsMax)
+  );
+  updateFpsMax();
+
+  // ── Toast ─────────────────────────────────────────────────
+  const toastEl = document.getElementById('toast');
+  let toastTimer = null;
+
+  function showToast(msg, type = 'error') {
+    clearTimeout(toastTimer);
+    toastEl.className = `toast show ${type}`;
+    const icon = { success: '✓', error: '✕', warn: '⚠' }[type] || '•';
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = icon;
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = msg;
+    toastEl.innerHTML = '';
+    toastEl.appendChild(iconSpan);
+    toastEl.appendChild(msgSpan);
+    if (type === 'success') toastTimer = setTimeout(() => toastEl.classList.remove('show'), 5000);
+  }
+
+  function hideToast() { toastEl.classList.remove('show'); }
+
+  // ── Form submit ───────────────────────────────────────────
+  const btnInner    = document.getElementById('btn-inner');
+  const resultCard  = document.getElementById('result-card');
+  const resultImg   = document.getElementById('result-img');
+  const btnDownload = document.getElementById('btn-download');
+  const resultMeta  = document.getElementById('result-meta');
+
+  btnSubmit.addEventListener('click', async () => {
+    if (!files.length) { showToast('请先选择图片', 'error'); return; }
+
+    const widthVal  = document.getElementById('width').value;
+    const heightVal = document.getElementById('height').value;
+    if ((widthVal && !heightVal) || (!widthVal && heightVal)) {
+      showToast('宽度和高度需同时填写或同时留空', 'warn');
+      return;
+    }
+
+    hideToast();
+    btnSubmit.disabled = true;
+    btnInner.innerHTML = '<span class="spinner"></span> 编码中，请稍候…';
+
+    const payload = new FormData();
+    for (const file of files) payload.append('images', file, file.name);
+    const format = getFormat();
+    payload.append('format', format);
+    payload.append('fps', fpsRange.value);
+    payload.append('loop', document.getElementById('loop').value);
+    if (widthVal)  payload.append('width',  widthVal);
+    if (heightVal) payload.append('height', heightVal);
+
+    const t0 = Date.now();
+    try {
+      const res = await fetch('/api/encode', { method: 'POST', body: payload });
+      if (!res.ok) {
+        let errMsg = '请求失败';
+        try {
+          const json = await res.json();
+          errMsg = json.error || errMsg;
+        } catch { errMsg = (await res.text()) || errMsg; }
+        throw new Error(errMsg);
+      }
+
+      const blob = await res.blob();
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      const filename = `output-${Date.now()}.${format}`;
+      const objectUrl = URL.createObjectURL(blob);
+
+      resultImg.src = objectUrl;
+      btnDownload.href = objectUrl;
+      btnDownload.download = filename;
+      btnDownload.textContent = `⬇️ 下载 ${filename}`;
+
+      resultMeta.innerHTML = [
+        `<span class="meta-tag">${format.toUpperCase()}</span>`,
+        `<span class="meta-tag">${fpsRange.value} FPS</span>`,
+        `<span class="meta-tag">${files.length} 帧</span>`,
+        `<span class="meta-tag">${fmtBytes(blob.size)}</span>`,
+        `<span class="meta-tag">耗时 ${elapsed}s</span>`,
+      ].join('');
+
+      resultCard.classList.add('show');
+      resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      showToast(`生成成功：${filename}（${fmtBytes(blob.size)}，耗时 ${elapsed}s）`, 'success');
+    } catch (err) {
+      showToast(`生成失败：${err.message || err}`, 'error');
+    } finally {
+      btnSubmit.disabled = files.length === 0;
+      btnInner.textContent = '⚡ 开始生成';
+    }
+  });
+
+  // ── API docs accordion ────────────────────────────────────
+  const apiToggle = document.getElementById('api-toggle');
+  const apiBody   = document.getElementById('api-body');
+
+  apiToggle.addEventListener('click', () => {
+    const expanded = apiToggle.getAttribute('aria-expanded') === 'true';
+    apiToggle.setAttribute('aria-expanded', String(!expanded));
+    apiBody.classList.toggle('open', !expanded);
+  });
+</script>
 </body>
 </html>

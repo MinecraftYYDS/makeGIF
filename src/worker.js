@@ -6,6 +6,14 @@ const { GIFEncoder, quantize, applyPalette } = gifenc;
 
 const MAX_IMAGES = 60;
 const MAX_DIMENSION = 4096;
+const MAX_GIF_FPS = 60;
+const MAX_APNG_FPS = 120;
+
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'Content-Type',
+};
 
 const PNG_SIGNATURE_SIZE = 8;
 const PNG_CHUNK_OVERHEAD = 12;
@@ -26,6 +34,26 @@ const CRC_TABLE = (() => {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    if (url.pathname === '/api/health') {
+      return jsonResponse({ ok: true });
+    }
+
+    if (url.pathname === '/api/info') {
+      return jsonResponse({
+        formats: ['gif', 'apng'],
+        fps: {
+          gif:  { min: 1, max: MAX_GIF_FPS  },
+          apng: { min: 1, max: MAX_APNG_FPS },
+        },
+        maxImages: MAX_IMAGES,
+        maxDimension: MAX_DIMENSION,
+      });
+    }
 
     if (url.pathname === '/api/encode') {
       if (request.method !== 'POST') {
@@ -62,7 +90,8 @@ async function encodeHandler(request) {
     throw new Error('format must be gif or apng');
   }
 
-  const fps = parsePositiveInt(form.get('fps'), 10, 1, 60, 'fps');
+  const maxFps = format === 'apng' ? MAX_APNG_FPS : MAX_GIF_FPS;
+  const fps = parsePositiveInt(form.get('fps'), 10, 1, maxFps, 'fps');
   const loop = parsePositiveInt(form.get('loop'), 0, 0, 65535, 'loop');
 
   const widthValue = form.get('width');
@@ -100,6 +129,7 @@ async function encodeHandler(request) {
       'content-type': format === 'gif' ? 'image/gif' : 'image/apng',
       'content-disposition': `attachment; filename="output.${format}"`,
       'cache-control': 'no-store',
+      ...CORS_HEADERS,
     },
   });
 }
@@ -236,9 +266,16 @@ function crc32(data) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8', ...CORS_HEADERS },
+  });
+}
+
 function jsonError(message, status) {
   return new Response(JSON.stringify({ error: message }), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8' },
+    headers: { 'content-type': 'application/json; charset=utf-8', ...CORS_HEADERS },
   });
 }
